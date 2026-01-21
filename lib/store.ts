@@ -1,9 +1,16 @@
 import { configureStore } from "@reduxjs/toolkit";
+import jobDescriptionReducer from "@/src/domain/slices/jobDescriptionSlice";
+import cvDataReducer from "@/src/domain/slices/cvDataSlice";
+import qaSessionReducer from "@/src/domain/slices/qaSessionSlice";
+import generationReducer from "@/src/domain/slices/generationSlice";
 
 export const makeStore = () => {
   return configureStore({
     reducer: {
-      // Add your reducers here
+      jobDescription: jobDescriptionReducer,
+      cvData: cvDataReducer,
+      qaSession: qaSessionReducer,
+      generation: generationReducer,
     },
   });
 };
