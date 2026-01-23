@@ -26,6 +26,8 @@ const jobDescriptionSlice = createSlice({
      * Set the job description
      */
     setJobDescription: (state, action: PayloadAction<JobDescription>) => {
+      // createdAt is already a string (ISO format) from the component
+      // This ensures Redux serialization compatibility
       state.jobDescription = action.payload;
       state.error = null;
     },
@@ -41,7 +43,7 @@ const jobDescriptionSlice = createSlice({
         state.jobDescription = {
           id: `job-${Date.now()}`,
           content: action.payload,
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
       state.error = null;

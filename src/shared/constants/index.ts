@@ -14,13 +14,19 @@ export const STORAGE_KEYS = {
 
 /**
  * Hugging Face model configurations
- * Using Meta's Llama 3.1 8B Instruct for best text generation quality
+ * Using models that work with the Inference API
+ * Note: Some models require inference providers to be enabled in HF settings
  */
 export const HUGGINGFACE_MODELS = {
+  // Primary model - requires inference provider
   CV_GENERATION: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
   COVER_LETTER: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
-  // Fallback models if primary fails
+  // Fallback models - try these if primary fails
   FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.2',
+  // Alternative fallback - more widely available
+  ALTERNATIVE_FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.1',
+  // Last resort - smaller, more available model
+  LAST_RESORT: 'microsoft/Phi-3-mini-4k-instruct',
 } as const;
 
 /**

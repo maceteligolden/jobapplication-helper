@@ -5,6 +5,7 @@
 
 /**
  * Job description data structure
+ * Dates are stored as ISO strings for Redux serialization compatibility
  */
 export interface JobDescription {
   id: string;
@@ -12,11 +13,12 @@ export interface JobDescription {
   title?: string;
   company?: string;
   requirements?: string[];
-  createdAt: Date;
+  createdAt: string; // ISO string format
 }
 
 /**
  * CV data structure
+ * Dates are stored as ISO strings for Redux serialization compatibility
  */
 export interface CVData {
   id: string;
@@ -27,7 +29,7 @@ export interface CVData {
   certifications?: string[];
   languages?: Language[];
   rawContent?: string; // Original CV text if uploaded
-  createdAt: Date;
+  createdAt: string; // ISO string format
 }
 
 /**
@@ -80,12 +82,13 @@ export interface Language {
 
 /**
  * Chat message in Q&A session
+ * Dates are stored as ISO strings for Redux serialization compatibility
  */
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  timestamp: Date;
+  timestamp: string; // ISO string format
   questionType?: QuestionType;
 }
 
@@ -103,6 +106,7 @@ export type QuestionType =
 
 /**
  * Q&A session state
+ * Dates are stored as ISO strings for Redux serialization compatibility
  */
 export interface QASession {
   id: string;
@@ -110,7 +114,7 @@ export interface QASession {
   messages: ChatMessage[];
   pendingQuestions: QuestionType[];
   isComplete: boolean;
-  createdAt: Date;
+  createdAt: string; // ISO string format
 }
 
 /**
@@ -125,6 +129,7 @@ export type GenerationStatus =
 
 /**
  * Generation result
+ * Dates are stored as ISO strings for Redux serialization compatibility
  */
 export interface GenerationResult {
   id: string;
@@ -135,8 +140,8 @@ export interface GenerationResult {
   coverLetter?: string;
   error?: string;
   progress?: number;
-  createdAt: Date;
-  completedAt?: Date;
+  createdAt: string; // ISO string format
+  completedAt?: string; // ISO string format
 }
 
 /**

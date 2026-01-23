@@ -34,7 +34,7 @@ const qaSessionSlice = createSlice({
         messages: [],
         pendingQuestions: action.payload.pendingQuestions,
         isComplete: false,
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
       state.error = null;
     },
@@ -44,6 +44,8 @@ const qaSessionSlice = createSlice({
      */
     addMessage: (state, action: PayloadAction<ChatMessage>) => {
       if (state.session) {
+        // Timestamp is already a string (ISO format) from the component
+        // This ensures Redux serialization compatibility
         state.session.messages.push(action.payload);
       }
     },
@@ -53,6 +55,8 @@ const qaSessionSlice = createSlice({
      */
     addMessages: (state, action: PayloadAction<ChatMessage[]>) => {
       if (state.session) {
+        // Timestamps are already strings (ISO format) from components
+        // This ensures Redux serialization compatibility
         state.session.messages.push(...action.payload);
       }
     },

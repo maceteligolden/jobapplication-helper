@@ -28,6 +28,8 @@ const cvDataSlice = createSlice({
      * Set complete CV data
      */
     setCVData: (state, action: PayloadAction<CVData>) => {
+      // createdAt is already a string (ISO format) from the component
+      // This ensures Redux serialization compatibility
       state.cvData = action.payload;
       state.error = null;
     },
@@ -46,7 +48,7 @@ const cvDataSlice = createSlice({
           experience: [],
           education: [],
           skills: [],
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
     },
@@ -65,7 +67,7 @@ const cvDataSlice = createSlice({
           experience: [],
           education: [],
           skills: [],
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
       
@@ -105,7 +107,7 @@ const cvDataSlice = createSlice({
           experience: [],
           education: [],
           skills: [],
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
       
@@ -134,7 +136,7 @@ const cvDataSlice = createSlice({
           experience: [],
           education: [],
           skills: [],
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
       state.cvData.skills = action.payload;
@@ -154,7 +156,7 @@ const cvDataSlice = createSlice({
           experience: [],
           education: [],
           skills: [],
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
         };
       }
       state.cvData.rawContent = action.payload;

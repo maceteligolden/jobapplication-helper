@@ -17,7 +17,7 @@ export const maxDuration = 60; // 60 seconds timeout
 export async function POST(request: NextRequest): Promise<NextResponse<ApiResponse<string>>> {
   try {
     const body = await request.json();
-    const { jobDescription, cvData } = body;
+    const { jobDescription, cvData, jobAnalysis } = body;
 
     // Validate input
     if (!jobDescription || typeof jobDescription !== 'string') {
@@ -40,8 +40,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
       );
     }
 
-    // Generate CV
-    const optimizedCV = await generateCV(jobDescription, cvData);
+    // Generate CV with job analysis if available
+    const optimizedCV = await generateCV(jobDescription, cvData, jobAnalysis);
 
     return NextResponse.json({
       success: true,

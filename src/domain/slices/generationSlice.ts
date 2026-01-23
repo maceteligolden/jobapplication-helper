@@ -36,7 +36,7 @@ const generationSlice = createSlice({
         jobDescriptionId: action.payload.jobDescriptionId,
         cvId: action.payload.cvId,
         status: 'analyzing',
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
     },
     
@@ -87,7 +87,7 @@ const generationSlice = createSlice({
       if (state.result) {
         state.result.status = 'completed';
         state.result.progress = 100;
-        state.result.completedAt = new Date();
+        state.result.completedAt = new Date().toISOString();
       }
     },
     

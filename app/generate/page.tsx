@@ -20,6 +20,7 @@ import {
 import { LoadingSpinner } from '@/src/presentation/components/ui/LoadingSpinner';
 import { API_ROUTES } from '@/src/shared/constants';
 import type { ApiResponse } from '@/src/shared/types';
+import type { AnalyzeResponse } from '@/app/api/cv/analyze/route';
 
 export default function GeneratePage() {
   const router = useRouter();
@@ -65,12 +66,34 @@ export default function GeneratePage() {
       dispatch(updateProgress(30));
       setStatusMessage("Crafting your optimized CV... ✨");
 
+      // Get job analysis if available (from previous analysis)
+      let jobAnalysis = null;
+      try {
+        const analyzeResponse = await fetch('/api/cv/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobDescription: jobDescription.content,
+            cvContent: cvData.rawContent || JSON.stringify(cvData),
+          }),
+        });
+        if (analyzeResponse.ok) {
+          const analyzeResult: ApiResponse<AnalyzeResponse> = await analyzeResponse.json();
+          if (analyzeResult.success && analyzeResult.data) {
+            jobAnalysis = analyzeResult.data.jobAnalysis;
+          }
+        }
+      } catch (err) {
+        console.log('Could not get job analysis, proceeding without it');
+      }
+
       const cvResponse = await fetch(API_ROUTES.GENERATE_CV, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobDescription: jobDescription.content,
           cvData: cvData.rawContent || JSON.stringify(cvData),
+          jobAnalysis: jobAnalysis,
         }),
       });
 

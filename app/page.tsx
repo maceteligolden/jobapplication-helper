@@ -45,10 +45,11 @@ export default function Home() {
 
     try {
       // Create job description object
+      // Use ISO string for createdAt to ensure Redux serialization compatibility
       const jobDesc: JobDescription = {
         id: `job-${Date.now()}`,
         content: jobDescription.trim(),
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
 
       // Save to Redux store
