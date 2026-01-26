@@ -311,7 +311,7 @@ Instructions:
 
 Generate the optimized CV in a professional format:`;
 
-  return generateText(prompt, HUGGINGFACE_MODELS.CV_GENERATION, 3000);
+  return generateText(prompt, HUGGINGFACE_MODELS.CV_GENERATION);
 }
 
 /**

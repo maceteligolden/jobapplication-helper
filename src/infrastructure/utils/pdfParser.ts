@@ -73,6 +73,7 @@ setupPolyfills();
 /**
  * Parse PDF buffer to text
  * Uses dynamic import to avoid bundling issues with Next.js
+ * pdf-parse v2+ uses PDFParse class pattern
  */
 export async function parsePDF(buffer: Buffer): Promise<string> {
   try {
@@ -80,48 +81,58 @@ export async function parsePDF(buffer: Buffer): Promise<string> {
     // This avoids bundling issues and ensures proper module resolution
     const pdfParseModule = await import('pdf-parse');
     
-    // pdf-parse exports the function as the default export
-    // Try default export first, then fallback to module itself
-    // Use type assertion to handle complex export structure
-    const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+    // pdf-parse v2+ exports PDFParse as a class
+    // Usage: new PDFParse({ data: buffer }).getText()
+    const PDFParseClass = (pdfParseModule as any).PDFParse;
     
-    if (typeof pdfParse !== 'function') {
+    if (!PDFParseClass || typeof PDFParseClass !== 'function') {
       throw new Error(
-        'pdf-parse did not export a function. ' +
-        'Please ensure pdf-parse is properly installed: npm install pdf-parse'
+        'pdf-parse did not export PDFParse class. ' +
+        'Please ensure pdf-parse v2+ is properly installed: npm install pdf-parse'
       );
     }
     
-    // Call the parsing function with the buffer
-    const data = await pdfParse(buffer);
+    // Create parser instance with buffer data
+    const parser = new PDFParseClass({ data: buffer });
     
-    if (!data || typeof data.text !== 'string') {
+    // Get text from PDF
+    const result = await parser.getText();
+    
+    if (!result || typeof result.text !== 'string') {
       throw new Error('pdf-parse returned invalid data structure');
     }
     
-    return data.text;
+    return result.text;
   } catch (error) {
     // If dynamic import fails, try require() as fallback (for Node.js runtime)
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
       const pdfParseReq = require('pdf-parse');
-      const pdfParse = pdfParseReq.default || pdfParseReq;
       
-      if (typeof pdfParse !== 'function') {
-        throw new Error('pdf-parse function not found in require() fallback');
+      const PDFParseClass = pdfParseReq.PDFParse;
+      
+      if (!PDFParseClass || typeof PDFParseClass !== 'function') {
+        throw new Error('pdf-parse PDFParse class not found in require() fallback');
       }
       
-      const data = await pdfParse(buffer);
+      // Create parser instance with buffer data
+      const parser = new PDFParseClass({ data: buffer });
       
-      if (!data || typeof data.text !== 'string') {
+      // Get text from PDF
+      const result = await parser.getText();
+      
+      if (!result || typeof result.text !== 'string') {
         throw new Error('pdf-parse returned invalid data structure');
       }
       
-      return data.text;
+      return result.text;
     } catch (fallbackError) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : 'Unknown';
+      
       throw new Error(
-        `Failed to parse PDF: ${error instanceof Error ? error.message : 'Unknown error'}. ` +
-        `Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown'}. ` +
+        `Failed to parse PDF: ${errorMessage}. ` +
+        `Fallback also failed: ${fallbackMessage}. ` +
         'Please ensure the PDF file is not corrupted or password-protected.'
       );
     }

@@ -13,7 +13,7 @@ import { setCVData, setRawCVContent } from '@/src/domain/slices/cvDataSlice';
 import { initializeSession } from '@/src/domain/slices/qaSessionSlice';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/src/presentation/components/ui/LoadingSpinner';
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE } from '@/src/shared/constants';
+import { MAX_FILE_SIZE } from '@/src/shared/constants';
 // File parsing is now done via API route
 import type { CVData, QuestionType } from '@/src/shared/types';
 import { cvStorage } from '@/src/shared/utils/storage';
