@@ -1,282 +1,263 @@
 /**
  * Hugging Face Inference Service
- * Handles communication with Hugging Face API for text generation
+ * Uses the official @huggingface/inference library with InferenceClient
  */
 
-import { HfInference } from '@huggingface/inference';
+import { InferenceClient, InferenceClientProviderApiError } from '@huggingface/inference';
 import { HUGGINGFACE_MODELS } from '@/src/shared/constants';
 
 /**
- * Direct API call to Hugging Face Inference API using the new router endpoint
- * This uses the router.huggingface.co endpoint which is the current standard
+ * Provider information
  */
-async function callInferenceAPIDirect(
-  model: string,
-  prompt: string,
-  maxLength: number,
-  token: string
-): Promise<string> {
-  // Use the new router endpoint
-  const url = `https://router.huggingface.co/models/${model}`;
-  
-  console.log(`Attempting direct API call to router endpoint for ${model}`);
-  
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: maxLength,
-          temperature: 0.7,
-          top_p: 0.9,
-          return_full_text: false,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = `Direct API call failed: ${response.status}`;
-      
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage += ` - ${errorJson.error || errorText}`;
-      } catch {
-        errorMessage += ` - ${errorText}`;
-      }
-      
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-    
-    // Handle different response formats
-    if (Array.isArray(data)) {
-      const result = data[0];
-      return result?.generated_text || result?.text || '';
-    }
-    
-    // Handle object response
-    if (data.generated_text) {
-      return data.generated_text;
-    }
-    
-    if (data.text) {
-      return data.text;
-    }
-    
-    // Handle chat completion format
-    if (data.choices && Array.isArray(data.choices) && data.choices[0]?.message?.content) {
-      return data.choices[0].message.content;
-    }
-    
-    throw new Error('Unexpected response format from API');
-  } catch (error) {
-    console.error('Direct API call error:', error);
-    throw error;
-  }
+interface ProviderInfo {
+  name: string;
+  enabled: boolean;
+  active: boolean;
+  status?: string;
+  models?: string[];
 }
+
+/**
+ * Connection status tracking
+ */
+let connectionStatus: {
+  initialized: boolean;
+  lastCheck: Date | null;
+  tokenFound: boolean;
+  tokenPrefix: string;
+  providers?: ProviderInfo[];
+} = {
+  initialized: false,
+  lastCheck: null,
+  tokenFound: false,
+  tokenPrefix: '',
+  providers: undefined,
+};
 
 /**
  * Initialize Hugging Face client
  * Reads token from environment variables
  */
-function getHfClient(): HfInference {
+function getHfClient(): InferenceClient {
   // Try multiple environment variable names for flexibility
   const token =
     process.env.HUGGINGFACE_API_TOKEN ||
     process.env.NEXT_PUBLIC_HUGGINGFACE_API_TOKEN ||
     process.env.HF_TOKEN ||
     process.env.HF_API_TOKEN;
-  
-  if (!token || token.trim() === '') {
-    console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('HUGGING') || k.includes('HF')));
-    throw new Error(
-      'HUGGINGFACE_API_TOKEN is not set. Please configure your environment variables in .env.local file.'
-    );
-  }
 
-  // Create client with explicit endpoint configuration
-  // The HfInference client should handle routing automatically, but we'll ensure it's configured
-  const client = new HfInference(token);
-  
-  // Log token status (first 10 chars only for security)
-  console.log('Hugging Face client initialized with token:', token.substring(0, 10) + '...');
+  // Create InferenceClient (newer API)
+  const client = new InferenceClient(token);
+
   
   return client;
 }
 
+
+
+
+
+
+
+
+
 /**
  * Generate text using Hugging Face model
- * Handles different model types (text-generation vs conversational)
+ * Uses chatCompletion for conversational models, textGeneration for others
  */
 export async function generateText(
   prompt: string,
   model: string = HUGGINGFACE_MODELS.CV_GENERATION,
   maxLength: number = 2000
 ): Promise<string> {
-  try {
-    const hf = getHfClient();
+  const client = getHfClient();
 
-    // Check if model requires conversational API (Mistral, Llama, etc.)
-    const requiresConversational = 
-      model.includes('mistralai') || 
-      model.includes('Mistral') ||
-      model.includes('llama') ||
-      model.includes('Llama') ||
-      model.includes('meta-llama');
-    
-    console.log(`Attempting to generate text with model: ${model} (conversational: ${requiresConversational})`);
-    
+  // Determine which API to use based on model type
+  // Models that typically use chat completion: Llama, Mistral, GLM, Qwen, etc.
+  const requiresConversational = 
+    model.includes('mistralai') || 
+    model.includes('Mistral') ||
+    model.includes('llama') ||
+    model.includes('Llama') ||
+    model.includes('meta-llama') ||
+    model.includes('GLM') ||
+    model.includes('glm') ||
+    model.includes('Qwen') ||
+    model.includes('qwen') ||
+    model.includes('chat') ||
+    model.includes('instruct') ||
+    model.includes('Instruct');
+
+  try {
     if (requiresConversational) {
-      // Use conversational API for models that require it (Llama, Mistral, etc.)
-      try {
-        const response = await hf.chatCompletion({
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          max_tokens: maxLength,
+      // Use chatCompletion for conversational models (like GLM-4.7-Flash)
+      // Note: No provider specified - library will automatically select the best available provider
+      const completion = await client.chatCompletion({
+        model: "zai-org/GLM-4.7-Flash",
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        max_tokens: maxLength,
+        temperature: 0.7,
+        top_p: 0.9,
+        // No provider specified - InferenceClient will auto-select from enabled providers
+      });
+
+      const generatedText = completion.choices[0]?.message?.content;
+      if (!generatedText) {
+        throw new Error('Model returned empty response');
+      }
+      
+      return generatedText;
+    } else {
+      // Use textGeneration for other models
+      // Note: No provider specified - library will automatically select the best available provider
+      const response = await client.textGeneration({
+        model: "zai-org/GLM-4.7-Flash",
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: maxLength,
           temperature: 0.7,
           top_p: 0.9,
-        });
+          do_sample: true,
+          return_full_text: false,
+        },
+        // No provider specified - InferenceClient will auto-select from enabled providers
+      });
 
-        // Extract text from conversational response
-        const generatedText = response.choices?.[0]?.message?.content || '';
-        if (!generatedText) {
-          throw new Error('Model returned empty response');
-        }
-        console.log(`Successfully generated text with ${model} (length: ${generatedText.length})`);
-        return generatedText;
-      } catch (chatError) {
-        console.error(`chatCompletion failed for ${model}:`, chatError);
-        throw chatError;
-      }
-    } else {
-      // Use text generation endpoint for other models
-      try {
-        const response = await hf.textGeneration({
-          model,
-          inputs: prompt,
-          parameters: {
-            max_new_tokens: maxLength,
-            temperature: 0.7,
-            top_p: 0.9,
-            do_sample: true,
-            return_full_text: false,
-          },
-        });
-
-        const generatedText = response.generated_text || '';
-        console.log(`Successfully generated text with ${model} (length: ${generatedText.length})`);
-        return generatedText;
-      } catch (textGenError) {
-        console.error(`textGeneration failed for ${model}:`, textGenError);
-        throw textGenError;
-      }
+      return response.generated_text || '';
     }
-  } catch (error) {
-    console.error('Hugging Face API error:', error);
-    
-    // Extract more detailed error information
-    let errorMessage = 'Failed to generate text. Please try again.';
-    let errorDetails = '';
-    let shouldTryDirectAPI = false;
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      errorDetails = error.stack || '';
-      
-      // Check for specific error types
-      if (error.message.includes('HTTP error') || error.message.includes('ProviderApiError')) {
-        errorMessage = `Hugging Face API error: The model may be unavailable or rate-limited. ${error.message}`;
-        shouldTryDirectAPI = true; // Try direct API if provider fails
-        console.error('Provider error details:', {
-          model,
-          error: error.message,
-          stack: errorDetails,
-        });
-      } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-        errorMessage = 'Hugging Face API authentication failed. Please check your API token in .env.local';
-      } else if (error.message.includes('429') || error.message.includes('rate limit')) {
-        errorMessage = 'Hugging Face API rate limit exceeded. Please try again in a moment.';
-      } else if (error.message.includes('No Inference Provider')) {
-        errorMessage = `Model ${model} is not available through any inference provider. Trying direct API...`;
-        shouldTryDirectAPI = true;
-      } else if (error.message.includes('not supported for task')) {
-        errorMessage = `Model ${model} does not support the required task. This may be a provider compatibility issue.`;
-        shouldTryDirectAPI = true;
-      }
-    }
-    
-    console.error('Hugging Face generation error:', {
+  } catch (error: any) {
+    // Enhanced error diagnostics
+    console.error('[HF] ❌ Generation error:', {
       model,
-      errorMessage,
-      errorDetails: errorDetails.substring(0, 500), // Limit log size
+      errorType: error?.constructor?.name,
+      errorMessage: error?.message,
+      errorStack: error?.stack?.substring(0, 500),
     });
 
-    // Try direct API call if provider-based API failed
-    if (shouldTryDirectAPI) {
-      try {
-        const token =
-          process.env.HUGGINGFACE_API_TOKEN ||
-          process.env.NEXT_PUBLIC_HUGGINGFACE_API_TOKEN ||
-          process.env.HF_TOKEN ||
-          process.env.HF_API_TOKEN;
-        
-        if (token) {
-          console.log(`Attempting direct API call for ${model}...`);
-          return await callInferenceAPIDirect(model, prompt, maxLength, token);
-        }
-      } catch (directAPIError) {
-        console.error('Direct API call also failed:', directAPIError);
-        // Continue to fallback models
-      }
-    }
+    // Check for ProviderApiError specifically (InferenceClientProviderApiError)
+    const isProviderError = 
+      error instanceof InferenceClientProviderApiError ||
+      error?.constructor?.name === 'InferenceClientProviderApiError' ||
+      error?.constructor?.name === 'ProviderApiError' ||
+      error?.name === 'ProviderApiError' ||
+      error?.message?.includes('ProviderApiError') ||
+      error?.message?.includes('InferenceClientProviderApiError');
     
-    // Try fallback models if primary fails
-    const fallbackModels = [
-      HUGGINGFACE_MODELS.FALLBACK,
-      HUGGINGFACE_MODELS.ALTERNATIVE_FALLBACK,
-      HUGGINGFACE_MODELS.LAST_RESORT,
-    ];
-    
-    if (!fallbackModels.includes(model as any)) {
-      console.log(`Primary model (${model}) failed, trying fallback models...`);
+    if (isProviderError) {
+      console.error('[HF] 🔍 ProviderApiError Diagnostics:');
+      console.error('[HF]   - This usually means no inference providers are enabled');
+      console.error('[HF]   - Or the model is not available through any provider');
+      console.error('[HF]   - Or there was an HTTP error when requesting the provider');
+      console.error('[HF]   - Check: https://hf.co/settings/inference-providers');
       
-      for (const fallbackModel of fallbackModels) {
+      // Try to extract more details from the error
+      // InferenceClientProviderApiError has httpRequest and httpResponse properties
+      if (error.httpRequest) {
+        console.error('[HF]   HTTP Request Details:', {
+          url: error.httpRequest?.url,
+          method: error.httpRequest?.method,
+          headers: error.httpRequest?.headers ? Object.keys(error.httpRequest.headers) : 'N/A',
+        });
+      }
+      
+      if (error.httpResponse) {
+        const responseBody = error.httpResponse?.body;
+        let parsedBody = responseBody;
         try {
-          console.log(`Trying fallback model: ${fallbackModel}`);
-          return await generateText(prompt, fallbackModel, maxLength);
-        } catch (fallbackError) {
-          console.error(`Fallback model ${fallbackModel} failed:`, fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
-          // Continue to next fallback
-          continue;
+          if (typeof responseBody === 'string') {
+            parsedBody = JSON.parse(responseBody);
+          }
+        } catch {
+          // Keep as string if not JSON
+        }
+        
+        console.error('[HF]   HTTP Response Details:', {
+          status: error.httpResponse?.status,
+          statusText: error.httpResponse?.statusText,
+          body: parsedBody,
+        });
+        
+        // Log specific error messages from response
+        if (parsedBody && typeof parsedBody === 'object') {
+          if (parsedBody.error) {
+            console.error('[HF]   Provider Error:', parsedBody.error);
+          }
+          if (parsedBody.message) {
+            console.error('[HF]   Provider Message:', parsedBody.message);
+          }
+          if (parsedBody.detail) {
+            console.error('[HF]   Provider Detail:', parsedBody.detail);
+          }
         }
       }
       
-      // If all models failed, provide detailed error message
-      console.error('All models (including fallbacks) failed');
-      throw new Error(
-        `${errorMessage}\n\n` +
-        `Troubleshooting steps:\n` +
-        `1. Check your Hugging Face inference providers: https://hf.co/settings/inference-providers\n` +
-        `2. Enable at least one provider (Novita, Together, etc.)\n` +
-        `3. Verify your API token at: https://hf.co/settings/tokens\n` +
-        `4. Check if models require accepting terms: Visit model pages and accept if needed\n` +
-        `5. See HUGGINGFACE_SETUP.md for detailed instructions`
-      );
+      // Log the full error for debugging
+      console.error('[HF]   Full Error Object:', {
+        name: error.name,
+        message: error.message,
+        constructor: error.constructor?.name,
+      });
+
+      // Try fallback models if primary model fails
+      const fallbackModels = [
+        HUGGINGFACE_MODELS.GLM_FLASH,
+        HUGGINGFACE_MODELS.FALLBACK,
+        HUGGINGFACE_MODELS.ALTERNATIVE_FALLBACK,
+        HUGGINGFACE_MODELS.LAST_RESORT,
+      ];
+
+      if (!fallbackModels.includes(model as any)) {
+        console.log(`[HF] 🔄 Primary model (${model}) failed, trying fallback models...`);
+        
+        for (const fallbackModel of fallbackModels) {
+          try {
+            console.log(`[HF] 🔄 Trying fallback model: ${fallbackModel}`);
+            const fallbackResult = await generateText(prompt, fallbackModel, maxLength);
+            console.log(`[HF] ✅ Fallback model ${fallbackModel} succeeded`);
+            return fallbackResult;
+          } catch (fallbackError) {
+            console.error(`[HF] ❌ Fallback model ${fallbackModel} failed:`, fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+            continue;
+          }
+        }
+      }
+
+      // Provide helpful error message
+      const diagnosticMessage = `
+ProviderApiError: Failed to perform inference
+
+DIAGNOSIS:
+1. Check your inference providers: https://hf.co/settings/inference-providers
+   - Enable at least ONE provider (Novita, Together, Fireworks, etc.)
+   - Make sure the provider shows as "Active" or "Enabled"
+
+2. Verify your API token: https://hf.co/settings/tokens
+   - Token must have "Make calls to Inference Providers" permission
+   - Token should have "Read" role at minimum
+
+3. Model availability:
+   - Model: ${model}
+   - This model may not be available through your enabled providers
+   - Tried fallback models but all failed
+
+4. Common solutions:
+   - Enable Novita or Together provider (most reliable)
+   - Check if model requires accepting terms: Visit model page on Hugging Face
+   - Restart your dev server after enabling providers
+
+See HUGGINGFACE_SETUP.md for detailed instructions.
+      `.trim();
+
+      throw new Error(diagnosticMessage);
     }
 
-    throw new Error(errorMessage);
+    // Re-throw other errors as-is
+    throw error;
   }
 }
 
@@ -335,7 +316,9 @@ Generate the optimized CV in a professional format:`;
 
 /**
  * Generate cover letter
+ * COMMENTED OUT - Temporarily disabled
  */
+/*
 export async function generateCoverLetter(
   jobDescription: string,
   cvData: string,
@@ -365,3 +348,4 @@ Generate the cover letter:`;
 
   return generateText(prompt, HUGGINGFACE_MODELS.COVER_LETTER, 2000);
 }
+*/

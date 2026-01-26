@@ -14,7 +14,7 @@ export const STORAGE_KEYS = {
 
 /**
  * Hugging Face model configurations
- * Using models that work with the Inference API
+ * Using models that work with the Inference API via @huggingface/inference library
  * Note: Some models require inference providers to be enabled in HF settings
  */
 export const HUGGINGFACE_MODELS = {
@@ -25,6 +25,8 @@ export const HUGGINGFACE_MODELS = {
   FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.2',
   // Alternative fallback - more widely available
   ALTERNATIVE_FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.1',
+  // Modern alternative - GLM-4.7-Flash (fast and efficient)
+  GLM_FLASH: 'zai-org/GLM-4.7-Flash',
   // Last resort - smaller, more available model
   LAST_RESORT: 'microsoft/Phi-3-mini-4k-instruct',
 } as const;

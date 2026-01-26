@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify-hf": "node scripts/verify-hf-connection.js"
   },
   "dependencies": {
     "@huggingface/inference": "^4.13.10",

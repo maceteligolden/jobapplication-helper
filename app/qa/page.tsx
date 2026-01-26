@@ -407,6 +407,38 @@ export default function QAPage() {
     }
   };
 
+  /**
+   * Handle generating CV from currently available data
+   */
+  const handleGenerateFromCurrentData = () => {
+    // Check if we have CV data available
+    const hasCVData = cvData && (
+      cvData.rawContent || 
+      cvData.personalInfo?.fullName || 
+      cvData.experience.length > 0 || 
+      cvData.education.length > 0 || 
+      cvData.skills.length > 0
+    );
+
+    if (!hasCVData) {
+      // Show a message that there's no data yet
+      const noDataMessage: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        role: 'assistant',
+        content: "I don't have enough information yet to generate your CV. Please answer a few more questions first, or upload your CV if you have one! 📝",
+        timestamp: new Date().toISOString(),
+      };
+      dispatch(addMessage(noDataMessage));
+      return;
+    }
+
+    // Mark session as complete (optional, but good for state management)
+    dispatch(completeSession());
+
+    // Navigate to generation page
+    router.push('/generate');
+  };
+
   if (!session) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -433,13 +465,23 @@ export default function QAPage() {
               </p>
             )}
           </div>
-          <Button
-            variant="outline"
-            onClick={() => router.push('/cv-input')}
-            className="border-gray-600 text-gray-300"
-          >
-            ← Back
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleGenerateFromCurrentData}
+              disabled={session.isComplete}
+              className="bg-[#1E40AF] hover:bg-[#1E3A8A] text-white"
+              title="Generate CV from currently available data"
+            >
+              Generate from Current Data 🚀
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push('/cv-input')}
+              className="border-gray-600 text-gray-300"
+            >
+              ← Back
+            </Button>
+          </div>
         </div>
       </div>
 

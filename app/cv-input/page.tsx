@@ -382,25 +382,36 @@ export default function CVInputPage() {
                 )}
               </div>
 
-              <div className="mt-6 flex gap-4">
-                <Button
-                  onClick={handleProceedAfterAnalysis}
-                  className="flex-1 bg-[#B91C1C] hover:bg-[#991B1B]"
-                >
-                  {analysisResult.cvMatch.matchScore < 80
-                    ? 'Fill Gaps via Q&A 💬'
-                    : 'Generate Optimized CV 🚀'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowAnalysis(false);
-                    setAnalysisResult(null);
-                  }}
-                  className="border-gray-600 text-gray-300"
-                >
-                  Back
-                </Button>
+              <div className="mt-6 flex flex-col gap-3">
+                <div className="flex gap-4">
+                  <Button
+                    onClick={handleProceedAfterAnalysis}
+                    className="flex-1 bg-[#B91C1C] hover:bg-[#991B1B]"
+                  >
+                    {analysisResult.cvMatch.matchScore < 80
+                      ? 'Fill Gaps via Q&A 💬'
+                      : 'Generate CV & Cover Letter 🚀'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAnalysis(false);
+                      setAnalysisResult(null);
+                    }}
+                    className="border-gray-600 text-gray-300"
+                  >
+                    Back
+                  </Button>
+                </div>
+                {analysisResult.cvMatch.matchScore < 80 && (
+                  <Button
+                    onClick={() => router.push('/generate')}
+                    variant="outline"
+                    className="w-full border-[#1E40AF] text-[#1E40AF] hover:bg-[#1E40AF] hover:text-white"
+                  >
+                    Generate CV & Cover Letter Anyway 🚀
+                  </Button>
+                )}
               </div>
             </div>
           )}

@@ -108,11 +108,14 @@ export default function GeneratePage() {
       }
 
       dispatch(setGeneratedCV(cvResult.data));
-      dispatch(updateProgress(50));
-      setStatusMessage("CV generated! Now working on your cover letter... 📝");
-
-      // Step 3: Generate Cover Letter (70-90%)
       dispatch(updateProgress(70));
+      setStatusMessage("CV generated successfully! ✨");
+
+      // Cover letter generation is temporarily disabled
+      // Step 3: Generate Cover Letter (COMMENTED OUT)
+      /*
+      dispatch(updateProgress(70));
+      setStatusMessage("CV generated! Now working on your cover letter... 📝");
 
       const coverLetterResponse = await fetch(API_ROUTES.GENERATE_COVER_LETTER, {
         method: 'POST',
@@ -136,12 +139,13 @@ export default function GeneratePage() {
 
       dispatch(setGeneratedCoverLetter(coverLetterResult.data));
       dispatch(updateProgress(90));
+      */
 
       // Step 4: Complete (100%)
       await new Promise((resolve) => setTimeout(resolve, 500));
       dispatch(updateProgress(100));
       dispatch(completeGeneration());
-      setStatusMessage("All done! Your optimized CV and cover letter are ready! 🎉");
+      setStatusMessage("All done! Your optimized CV is ready! 🎉");
 
       // Navigate to results page
       setTimeout(() => {
