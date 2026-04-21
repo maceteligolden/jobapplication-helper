@@ -19,8 +19,8 @@ export const STORAGE_KEYS = {
  */
 export const HUGGINGFACE_MODELS = {
   // Primary model - requires inference provider
-  CV_GENERATION: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
-  COVER_LETTER: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+  CV_GENERATION: 'zai-org/GLM-4.7-Flash',
+  COVER_LETTER: 'zai-org/GLM-4.7-Flash',
   // Fallback models - try these if primary fails
   FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.2',
   // Alternative fallback - more widely available

@@ -70,7 +70,14 @@ export async function generateText(
   model: string = HUGGINGFACE_MODELS.CV_GENERATION,
   maxLength: number = 2000
 ): Promise<string> {
+  const startTime = Date.now();
   const client = getHfClient();
+  
+  console.log(`[HF] 🚀 Starting text generation:`, {
+    model,
+    promptLength: prompt.length,
+    maxLength,
+  });
 
   // Determine which API to use based on model type
   // Models that typically use chat completion: Llama, Mistral, GLM, Qwen, etc.
@@ -89,21 +96,24 @@ export async function generateText(
     model.includes('Instruct');
 
   try {
+    // Limit prompt length to avoid very long generation times (keep last 8000 chars for context)
+    const truncatedPrompt = prompt.length > 8000 
+      ? prompt.slice(-8000) 
+      : prompt;
+    
     if (requiresConversational) {
       // Use chatCompletion for conversational models (like GLM-4.7-Flash)
       // Note: No provider specified - library will automatically select the best available provider
       const completion = await client.chatCompletion({
-        model: "zai-org/GLM-4.7-Flash",
+        model: model, // Use the model parameter, not hardcoded
         messages: [
           {
             role: 'user',
-            content: prompt,
+            content: truncatedPrompt,
           },
         ],
-        max_tokens: maxLength,
-        temperature: 0.7,
-        top_p: 0.9,
-        // No provider specified - InferenceClient will auto-select from enabled providers
+        temperature: 0.3,
+        max_tokens: maxLength, // Limit response length to speed up generation
       });
 
       const generatedText = completion.choices[0]?.message?.content;
@@ -111,24 +121,37 @@ export async function generateText(
         throw new Error('Model returned empty response');
       }
       
+      const duration = Date.now() - startTime;
+      console.log(`[HF] ✅ Text generation completed in ${duration}ms:`, {
+        model,
+        responseLength: generatedText.length,
+        tokens: Math.ceil(generatedText.length / 4), // Rough estimate
+      });
+      
       return generatedText;
     } else {
       // Use textGeneration for other models
       // Note: No provider specified - library will automatically select the best available provider
       const response = await client.textGeneration({
-        model: "zai-org/GLM-4.7-Flash",
-        inputs: prompt,
+        model: model, // Use the model parameter, not hardcoded
+        inputs: truncatedPrompt,
         parameters: {
-          max_new_tokens: maxLength,
-          temperature: 0.7,
-          top_p: 0.9,
-          do_sample: true,
-          return_full_text: false,
+          temperature: 0.3,
+          max_new_tokens: maxLength, // Limit response length to speed up generation
         },
         // No provider specified - InferenceClient will auto-select from enabled providers
       });
 
-      return response.generated_text || '';
+      const generatedText = response.generated_text || '';
+      
+      const duration = Date.now() - startTime;
+      console.log(`[HF] ✅ Text generation completed in ${duration}ms:`, {
+        model,
+        responseLength: generatedText.length,
+        tokens: Math.ceil(generatedText.length / 4), // Rough estimate
+      });
+      
+      return generatedText;
     }
   } catch (error: any) {
     // Enhanced error diagnostics
@@ -262,38 +285,114 @@ See HUGGINGFACE_SETUP.md for detailed instructions.
 }
 
 /**
- * Generate CV content with job analysis
+ * Summarize job description to a reasonable length for CV generation
+ * Only summarizes if the description is longer than 1500 characters
+ */
+async function summarizeJobDescription(jobDescription: string): Promise<string> {
+  // If job description is already short enough, return as-is
+  if (jobDescription.length <= 1500) {
+    return jobDescription;
+  }
+
+  console.log(`[HF] 📝 Summarizing job description (${jobDescription.length} chars -> target: ~800-1000 chars)`);
+
+  const summaryPrompt = `Summarize the following job description concisely while preserving ALL critical information needed for CV optimization.
+
+Job Description:
+${jobDescription}
+
+Create a concise summary (approximately 200-300 words) that includes:
+1. Job title/role
+2. Key responsibilities (3-5 main points)
+3. Required skills and qualifications
+4. Experience level and years of experience required
+5. Education requirements
+6. Any specific technical requirements or certifications
+7. Company/industry context if relevant
+
+Focus on information that would be used to tailor a CV. Remove redundant information, lengthy descriptions, and boilerplate text. Keep all specific skills, technologies, and requirements.
+
+Summary:`;
+
+  try {
+    const summary = await generateText(summaryPrompt, HUGGINGFACE_MODELS.CV_GENERATION, 500);
+    console.log(`[HF] ✅ Job description summarized (${summary.length} chars)`);
+    return summary.trim();
+  } catch (error) {
+    console.error('[HF] ❌ Failed to summarize job description, using original:', error);
+    // If summarization fails, truncate the original to a reasonable length
+    // Keep the first 2000 characters (likely contains the most important info)
+    return jobDescription.length > 2000 
+      ? jobDescription.substring(0, 2000) + '...'
+      : jobDescription;
+  }
+}
+
+/**
+ * Generate CV content using optimized framework
  */
 export async function generateCV(
   jobDescription: string,
   cvData: string,
-  jobAnalysis?: {
-    businessType: string;
-    industry: string;
-    candidateProfile: {
-      experienceLevel: string;
-      keySkills: string[];
-    };
-    writingStyle: string;
-    domainStandards: string;
-  }
+  jobAnalysis?: any // Accept both old and new format
 ): Promise<string> {
-  const analysisContext = jobAnalysis
-    ? `
+  // Summarize job description if it's too long
+  const summarizedJobDescription = await summarizeJobDescription(jobDescription);
+
+  try {
+    // Use prompt framework if available
+    const { promptFramework } = await import('@/src/infrastructure/frameworks');
+    
+    // Convert old format to new format if needed
+    const frameworkData = {
+      jobDescription: summarizedJobDescription,
+      cvData,
+      jobAnalysis: jobAnalysis ? {
+        businessType: jobAnalysis.businessType,
+        industry: jobAnalysis.industry,
+        executionProfile: jobAnalysis.executionProfile,
+        idealCandidate: jobAnalysis.idealCandidate || jobAnalysis.candidateProfile,
+        hiringIntent: jobAnalysis.hiringIntent,
+        cvOptimization: jobAnalysis.cvOptimization || {
+          writingStyle: jobAnalysis.writingStyle || 'Professional',
+          domainStandards: jobAnalysis.domainStandards || 'Standard professional CV format',
+          focusAreas: [],
+          keywords: jobAnalysis.candidateProfile?.keySkills || [],
+        },
+      } : undefined,
+    };
+
+    const { systemMessage, userMessage, estimatedTokens } = promptFramework.build(
+      'cv-generation-optimized',
+      frameworkData
+    );
+
+    console.log(`[CV Generation] 📊 Estimated tokens: ${estimatedTokens}`);
+
+    // Combine system and user messages
+    const fullPrompt = `${systemMessage}\n\n${userMessage}`;
+
+    return generateText(fullPrompt, HUGGINGFACE_MODELS.CV_GENERATION, 3000);
+  } catch (error) {
+    // Fallback to old prompt format if framework fails
+    console.warn('[CV Generation] Framework not available, using fallback:', error);
+    
+    const analysisContext = jobAnalysis
+      ? `
 Business Context:
 - Business Type: ${jobAnalysis.businessType}
 - Industry: ${jobAnalysis.industry}
-- Target Experience Level: ${jobAnalysis.candidateProfile.experienceLevel}
-- Key Skills to Highlight: ${jobAnalysis.candidateProfile.keySkills.join(', ')}
-- Writing Style: ${jobAnalysis.writingStyle}
-- Domain Standards: ${jobAnalysis.domainStandards}
+- Target Experience Level: ${jobAnalysis.candidateProfile?.experienceLevel || jobAnalysis.idealCandidate?.experienceLevel || 'Professional'}
+- Key Skills to Highlight: ${(jobAnalysis.candidateProfile?.keySkills || jobAnalysis.idealCandidate?.keySkills || []).join(', ')}
+- Writing Style: ${jobAnalysis.writingStyle || jobAnalysis.cvOptimization?.writingStyle || 'professional'}
+- Domain Standards: ${jobAnalysis.domainStandards || jobAnalysis.cvOptimization?.domainStandards || 'standard professional CV format'}
 `
-    : '';
+      : '';
 
-  const prompt = `You are a professional CV optimizer. Your task is to create an optimized CV that matches the job description.
+    const prompt = `You are a professional CV optimizer. Your task is to create an optimized CV that matches the job description.
 
 Job Description:
-${jobDescription}
+${summarizedJobDescription}
 ${analysisContext}
 Original CV/Information:
 ${cvData}
@@ -301,17 +400,17 @@ ${cvData}
 Instructions:
 1. Analyze the job description to identify key requirements, skills, and qualifications
 2. Tailor the CV to highlight relevant experience and skills that match the job
-3. Use ${jobAnalysis?.writingStyle || 'professional'} language and formatting
-4. Follow ${jobAnalysis?.domainStandards || 'standard professional CV format'} for this domain
+3. Use ${jobAnalysis?.writingStyle || jobAnalysis?.cvOptimization?.writingStyle || 'professional'} language and formatting
+4. Follow ${jobAnalysis?.domainStandards || jobAnalysis?.cvOptimization?.domainStandards || 'standard professional CV format'} for this domain
 5. Ensure all sections are well-structured and easy to read
 6. Match keywords from the job description naturally
-7. Focus on achievements and impact, especially for ${jobAnalysis?.candidateProfile.experienceLevel || 'professional'} level roles
+7. Focus on achievements and impact
 8. Keep the CV concise but comprehensive
-9. Highlight skills: ${jobAnalysis?.candidateProfile.keySkills.join(', ') || 'all relevant skills'}
 
 Generate the optimized CV in a professional format:`;
 
-  return generateText(prompt, HUGGINGFACE_MODELS.CV_GENERATION);
+    return generateText(prompt, HUGGINGFACE_MODELS.CV_GENERATION, 3000);
+  }
 }
 
 /**

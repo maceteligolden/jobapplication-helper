@@ -54,38 +54,23 @@ export default function GeneratePage() {
     }));
 
     try {
-      // Step 1: Analyze (10%)
+      // Step 1: Analyze (10%) - Skip artificial delay for faster UX
       dispatch(updateStatus('analyzing'));
       dispatch(updateProgress(10));
-      setStatusMessage("Analyzing job description and your CV... 🤔");
-
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setStatusMessage("Preparing your CV generation... 🤔");
 
       // Step 2: Generate CV (30-70%)
       dispatch(updateStatus('generating'));
       dispatch(updateProgress(30));
       setStatusMessage("Crafting your optimized CV... ✨");
 
-      // Get job analysis if available (from previous analysis)
-      let jobAnalysis = null;
-      try {
-        const analyzeResponse = await fetch('/api/cv/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jobDescription: jobDescription.content,
-            cvContent: cvData.rawContent || JSON.stringify(cvData),
-          }),
-        });
-        if (analyzeResponse.ok) {
-          const analyzeResult: ApiResponse<AnalyzeResponse> = await analyzeResponse.json();
-          if (analyzeResult.success && analyzeResult.data) {
-            jobAnalysis = analyzeResult.data.jobAnalysis;
-          }
-        }
-      } catch (err) {
-        console.log('Could not get job analysis, proceeding without it');
-      }
+      // Skip analysis step to speed up generation - jobAnalysis is optional
+      // If analysis is needed, it should be done before reaching this page
+      const jobAnalysis = null;
+
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 50000); // 50 second timeout
 
       const cvResponse = await fetch(API_ROUTES.GENERATE_CV, {
         method: 'POST',
@@ -95,7 +80,10 @@ export default function GeneratePage() {
           cvData: cvData.rawContent || JSON.stringify(cvData),
           jobAnalysis: jobAnalysis,
         }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!cvResponse.ok) {
         const errorData: ApiResponse<unknown> = await cvResponse.json();
@@ -108,7 +96,7 @@ export default function GeneratePage() {
       }
 
       dispatch(setGeneratedCV(cvResult.data));
-      dispatch(updateProgress(70));
+      dispatch(updateProgress(90));
       setStatusMessage("CV generated successfully! ✨");
 
       // Cover letter generation is temporarily disabled
@@ -142,20 +130,22 @@ export default function GeneratePage() {
       */
 
       // Step 4: Complete (100%)
-      await new Promise((resolve) => setTimeout(resolve, 500));
       dispatch(updateProgress(100));
       dispatch(completeGeneration());
       setStatusMessage("All done! Your optimized CV is ready! 🎉");
 
-      // Navigate to results page
-      setTimeout(() => {
-        router.push('/results');
-      }, 1500);
+      // Navigate to results page immediately
+      router.push('/results');
     } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : 'Something went wrong during generation. But hey, we tried! 😅';
+      let errorMessage = 'Something went wrong during generation. But hey, we tried! 😅';
+      
+      if (err instanceof Error) {
+        if (err.name === 'AbortError' || err.message.includes('aborted')) {
+          errorMessage = 'Generation timed out. The request took too long. Please try again with a shorter job description or CV.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
       
       dispatch(setError(errorMessage));
       setStatusMessage(`Oops! ${errorMessage}`);

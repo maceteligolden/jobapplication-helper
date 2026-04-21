@@ -18,45 +18,41 @@ export interface CVMatchAnalysis {
 }
 
 /**
- * Analyze CV match with job description
+ * Analyze CV match with job description using framework
  */
 export async function analyzeCVMatch(
   cvContent: string,
   jobDescription: string,
   jobAnalysis: JobAnalysis
 ): Promise<CVMatchAnalysis> {
-  const analysisPrompt = `You are a CV matching expert. Analyze how well the CV matches the job description.
-
-Job Description:
-${jobDescription}
-
-Job Requirements:
-${jobAnalysis.keyRequirements.join('\n')}
-
-Required Skills:
-${jobAnalysis.candidateProfile.keySkills.join(', ')}
-
-CV Content:
-${cvContent}
-
-Provide a detailed matching analysis in JSON format:
-{
-  "matchScore": 0-100,
-  "matchedSkills": ["skill1", "skill2"],
-  "missingSkills": ["skill1", "skill2"],
-  "matchedRequirements": ["req1", "req2"],
-  "missingRequirements": ["req1", "req2"],
-  "semanticGaps": ["gap1", "gap2"],
-  "recommendations": ["rec1", "rec2"]
-}
-
-Be thorough and specific. Consider both exact matches and semantic similarity.`;
-
   try {
+    // Use prompt framework if available
+    const { promptFramework } = await import('@/src/infrastructure/frameworks');
+    
+    const frameworkData = {
+      cvContent,
+      jobDescription,
+      jobAnalysis: {
+        idealCandidate: jobAnalysis.candidateProfile || jobAnalysis.idealCandidate,
+        keyRequirements: jobAnalysis.keyRequirements,
+        executionProfile: jobAnalysis.executionProfile,
+      },
+    };
+
+    const { systemMessage, userMessage, estimatedTokens } = promptFramework.build(
+      'cv-match-analysis',
+      frameworkData
+    );
+
+    console.log(`[CVMatch] 📊 Estimated tokens: ${estimatedTokens}`);
+
+    // Combine system and user messages
+    const fullPrompt = `${systemMessage}\n\n${userMessage}`;
+
     const response = await generateText(
-      analysisPrompt,
+      fullPrompt,
       HUGGINGFACE_MODELS.CV_GENERATION,
-      2000
+      1500 // Optimized response length
     );
 
     console.log('AI Analysis Response:', response.substring(0, 500)); // Debug log
@@ -104,7 +100,53 @@ Be thorough and specific. Consider both exact matches and semantic similarity.`;
     return calculateBasicMatch(cvContent, jobDescription, jobAnalysis);
   } catch (error) {
     console.error('CV match analysis error:', error);
-    console.log('Using fallback calculation due to error');
+    // Fallback to old prompt format
+    const analysisPrompt = `You are a CV matching expert. Analyze how well the CV matches the job description.
+
+Job Description:
+${jobDescription}
+
+Job Requirements:
+${jobAnalysis.keyRequirements.join('\n')}
+
+Required Skills:
+${(jobAnalysis.candidateProfile?.keySkills || jobAnalysis.idealCandidate?.keySkills || []).join(', ')}
+
+CV Content:
+${cvContent}
+
+Provide a detailed matching analysis in JSON format:
+{
+  "matchScore": 0-100,
+  "matchedSkills": ["skill1", "skill2"],
+  "missingSkills": ["skill1", "skill2"],
+  "matchedRequirements": ["req1", "req2"],
+  "missingRequirements": ["req1", "req2"],
+  "semanticGaps": ["gap1", "gap2"],
+  "recommendations": ["rec1", "rec2"]
+}
+
+Be thorough and specific. Consider both exact matches and semantic similarity.`;
+
+    try {
+      const response = await generateText(
+        analysisPrompt,
+        HUGGINGFACE_MODELS.CV_GENERATION,
+        1500
+      );
+      
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]) as CVMatchAnalysis;
+        if (typeof parsed.matchScore === 'number') {
+          return parsed;
+        }
+      }
+    } catch (fallbackError) {
+      console.error('Fallback prompt also failed:', fallbackError);
+    }
+    
+    console.log('Using basic calculation due to error');
     return calculateBasicMatch(cvContent, jobDescription, jobAnalysis);
   }
 }

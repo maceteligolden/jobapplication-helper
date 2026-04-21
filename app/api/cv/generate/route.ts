@@ -25,9 +25,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<ApiRespon
     const { jobDescription, cvData, jobAnalysis } = body;
 
     console.log(`[API] [${requestId}] Request validation...`);
-    console.log(`[API] [${requestId}] Job description length: ${jobDescription?.length || 0}`);
-    console.log(`[API] [${requestId}] CV data length: ${cvData?.length || 0}`);
+    console.log(`[API] [${requestId}] Job description length: ${jobDescription?.length || 0} chars`);
+    console.log(`[API] [${requestId}] CV data length: ${cvData?.length || 0} chars`);
     console.log(`[API] [${requestId}] Job analysis provided: ${!!jobAnalysis}`);
+    if (jobDescription && jobDescription.length > 1500) {
+      console.log(`[API] [${requestId}] 📝 Job description will be summarized (exceeds 1500 chars)`);
+    }
 
     // Validate input
     if (!jobDescription || typeof jobDescription !== 'string') {
