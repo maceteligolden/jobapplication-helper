@@ -15,10 +15,17 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/src/presentation/components/ui/LoadingSpinner';
 import { MAX_FILE_SIZE } from '@/src/shared/constants';
 // File parsing is now done via API route
-import type { CVData, QuestionType } from '@/src/shared/types';
+import type { CVData } from '@/src/shared/types';
 import { cvStorage } from '@/src/shared/utils/storage';
 import type { AnalyzeResponse } from '@/app/api/cv/analyze/route';
 import type { ApiResponse } from '@/src/shared/types';
+import {
+  ensureServerSession,
+  prepareInterviewSession,
+  runSessionAnalyze,
+  shouldRouteToInterview,
+} from '@/src/shared/utils/sessionClient';
+import { MATCH_THRESHOLDS } from '@/src/shared/constants';
 
 export default function CVInputPage() {
   const router = useRouter();
@@ -32,6 +39,7 @@ export default function CVInputPage() {
   const [file, setFile] = useState<File | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [isNavigatingToInterview, setIsNavigatingToInterview] = useState(false);
 
   // Redirect if no job description
   useEffect(() => {
@@ -137,7 +145,57 @@ export default function CVInputPage() {
       setIsUploading(false);
       setIsAnalyzing(true);
 
-      // Analyze CV match with job description
+      const sessionId = await ensureServerSession(jobDescription.content);
+
+      try {
+        const workflowState = await runSessionAnalyze(sessionId, text, jobDescription.content);
+        if (workflowState?.matchReport && workflowState?.roleProfile) {
+          const legacyMatch = {
+            matchScore: workflowState.matchReport.overallFit,
+            matchedSkills: workflowState.matchReport.strengths.map((s: { text: string }) => s.text),
+            missingSkills: workflowState.matchReport.gaps.map((g: { requirement: string }) => g.requirement),
+            matchedRequirements: [] as string[],
+            missingRequirements: workflowState.matchReport.gaps.map((g: { requirement: string }) => g.requirement),
+            semanticGaps: workflowState.matchReport.gaps
+              .filter((g: { severity: string }) => g.severity === 'critical')
+              .map((g: { requirement: string }) => g.requirement),
+            recommendations: workflowState.matchReport.improvementActions.map(
+              (a: { action: string }) => a.action
+            ),
+            routingRecommendation: workflowState.matchReport.routingRecommendation,
+          };
+          setAnalysisResult({
+            jobAnalysis: {
+              industry: workflowState.roleProfile.industry,
+              businessType:
+                workflowState.jobTypeProfile?.jobType?.replace(/_/g, ' ') ??
+                workflowState.roleProfile.industry,
+              idealCandidate: {
+                experienceLevel: workflowState.roleProfile.seniority,
+                keySkills: workflowState.roleProfile.keySkills,
+                personalityTraits: [],
+                education: '',
+              },
+              keyRequirements: workflowState.roleProfile.hardRequirements,
+              cvOptimization: {
+                writingStyle: workflowState.roleProfile.writingTone,
+                domainStandards: workflowState.roleProfile.archetype,
+                focusAreas: workflowState.roleProfile.sectionPriority,
+                keywords: workflowState.roleProfile.keywords ?? workflowState.roleProfile.keySkills,
+              },
+              missingInfo: [],
+            },
+            cvMatch: legacyMatch,
+          });
+          setShowAnalysis(true);
+          setIsAnalyzing(false);
+          return;
+        }
+      } catch (workflowErr) {
+        console.warn('Workflow analyze fallback:', workflowErr);
+      }
+
+      // Fallback: legacy analyze endpoint
       const analyzeResponse = await fetch('/api/cv/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,144 +229,46 @@ export default function CVInputPage() {
     }
   };
 
+  const goToInterviewChat = async () => {
+    if (!jobDescription) return;
+    setIsNavigatingToInterview(true);
+    try {
+      await prepareInterviewSession(jobDescription.content);
+      dispatch(
+        initializeSession({
+          jobDescriptionId: jobDescription.id,
+          pendingQuestions: [],
+        })
+      );
+      router.push('/qa');
+    } catch (err) {
+      setUploadError(
+        err instanceof Error ? err.message : 'Could not start interview. Please try again.'
+      );
+    } finally {
+      setIsNavigatingToInterview(false);
+    }
+  };
+
   /**
-   * Handle proceed after analysis
-   * Routes to chat if score < 80%, otherwise to generation
+   * Handle proceed after analysis — interview or generate
    */
   const handleProceedAfterAnalysis = async () => {
     if (!analysisResult || !jobDescription) return;
 
     const matchScore = analysisResult.cvMatch.matchScore;
+    const routing = (analysisResult.cvMatch as { routingRecommendation?: string }).routingRecommendation;
 
-    if (matchScore < 80) {
-      // Score too low - route to Q&A to fill gaps
-      // Get CV content from Redux state (already available at component level)
-      const cvContent = cvData?.rawContent || '';
-      
-      // Generate questions based on analysis
-      const questionsResponse = await fetch('/api/qa/generate-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobAnalysis: analysisResult.jobAnalysis,
-          cvMatch: analysisResult.cvMatch,
-          cvContent: cvContent, // Pass full CV content for extraction
-        }),
-      });
-
-      if (questionsResponse.ok) {
-        const questionsResult: ApiResponse<{ questions: Array<{ type: string; question: string }> }> =
-          await questionsResponse.json();
-
-        if (questionsResult.success && questionsResult.data) {
-          // Initialize Q&A session with generated questions
-          dispatch(
-            initializeSession({
-              jobDescriptionId: jobDescription.id,
-              pendingQuestions: questionsResult.data.questions.map(
-                (q) => q.type as QuestionType
-              ),
-            })
-          );
-
-          // Store questions in session or state for Q&A page
-          router.push('/qa');
-          return;
-        }
-      }
-
-      // Fallback: use default questions
-      dispatch(
-        initializeSession({
-          jobDescriptionId: jobDescription.id,
-          pendingQuestions: [
-            'personal_info',
-            'experience',
-            'education',
-            'skills',
-            'summary',
-          ],
-        })
-      );
-      router.push('/qa');
+    if (shouldRouteToInterview(matchScore, routing)) {
+      await goToInterviewChat();
     } else {
-      // Score is good - proceed to generation
       router.push('/generate');
     }
   };
 
-  /**
-   * Start Q&A session directly
-   */
+  /** Start AI interview without uploading a CV */
   const handleStartQA = async () => {
-    if (!jobDescription) return;
-
-    // Analyze job description first to generate better questions
-    try {
-      const analyzeResponse = await fetch('/api/cv/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobDescription: jobDescription.content,
-          cvContent: '', // No CV content for Q&A flow
-        }),
-      });
-
-      if (analyzeResponse.ok) {
-        const analyzeResult: ApiResponse<AnalyzeResponse> = await analyzeResponse.json();
-        
-        if (analyzeResult.success && analyzeResult.data) {
-          // Generate questions from job analysis
-          const questionsResponse = await fetch('/api/qa/generate-questions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jobAnalysis: analyzeResult.data.jobAnalysis,
-            }),
-          });
-
-          if (questionsResponse.ok) {
-            const questionsResult: ApiResponse<{ questions: Array<{ type: string }> }> =
-              await questionsResponse.json();
-
-            if (questionsResult.success && questionsResult.data) {
-              dispatch(
-                initializeSession({
-                  jobDescriptionId: jobDescription.id,
-                  pendingQuestions: questionsResult.data.questions.map(
-                    (q) => q.type as any
-                  ),
-                })
-              );
-              router.push('/qa');
-              return;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error setting up Q&A:', error);
-    }
-
-    // Fallback: use default questions
-    const defaultQuestions: QuestionType[] = [
-      'personal_info',
-      'experience',
-      'education',
-      'skills',
-      'certifications',
-      'languages',
-      'summary',
-    ];
-
-    dispatch(
-      initializeSession({
-        jobDescriptionId: jobDescription.id,
-        pendingQuestions: defaultQuestions,
-      })
-    );
-
-    router.push('/qa');
+    await goToInterviewChat();
   };
 
   if (!jobDescription) {
@@ -359,10 +319,13 @@ export default function CVInputPage() {
                   </div>
                 </div>
 
-                {analysisResult.cvMatch.matchScore < 80 && (
+                {shouldRouteToInterview(
+                  analysisResult.cvMatch.matchScore,
+                  (analysisResult.cvMatch as { routingRecommendation?: string }).routingRecommendation
+                ) && (
                   <div className="bg-yellow-900/30 border border-yellow-500 rounded-lg p-4">
                     <p className="text-yellow-300 mb-2">
-                      ⚠️ Your CV match score is below 80%. I recommend going through a quick Q&A
+                      ⚠️ Your CV match score is below {MATCH_THRESHOLDS.GENERATE_DIRECT}%. I recommend going through a quick Q&A
                       session to fill in the gaps and boost your match score to at least 95%!
                     </p>
                     <ul className="text-sm text-yellow-200 list-disc list-inside space-y-1">
@@ -373,7 +336,10 @@ export default function CVInputPage() {
                   </div>
                 )}
 
-                {analysisResult.cvMatch.matchScore >= 80 && (
+                {!shouldRouteToInterview(
+                  analysisResult.cvMatch.matchScore,
+                  (analysisResult.cvMatch as { routingRecommendation?: string }).routingRecommendation
+                ) && (
                   <div className="bg-green-900/30 border border-green-500 rounded-lg p-4">
                     <p className="text-green-300">
                       ✅ Great match! Your CV looks good. Ready to generate the optimized version?
@@ -386,11 +352,20 @@ export default function CVInputPage() {
                 <div className="flex gap-4">
                   <Button
                     onClick={handleProceedAfterAnalysis}
+                    disabled={isNavigatingToInterview}
                     className="flex-1 bg-[#B91C1C] hover:bg-[#991B1B]"
                   >
-                    {analysisResult.cvMatch.matchScore < 80
-                      ? 'Fill Gaps via Q&A 💬'
-                      : 'Generate CV & Cover Letter 🚀'}
+                    {isNavigatingToInterview ? (
+                      <span className="flex items-center gap-2">
+                        <LoadingSpinner size="sm" className="text-white" />
+                        Starting interview...
+                      </span>
+                    ) : shouldRouteToInterview(
+                      analysisResult.cvMatch.matchScore,
+                      (analysisResult.cvMatch as { routingRecommendation?: string }).routingRecommendation
+                    )
+                      ? 'Fill Gaps via Interview 💬'
+                      : 'Generate Optimized CV 🚀'}
                   </Button>
                   <Button
                     variant="outline"
@@ -403,13 +378,16 @@ export default function CVInputPage() {
                     Back
                   </Button>
                 </div>
-                {analysisResult.cvMatch.matchScore < 80 && (
+                {shouldRouteToInterview(
+                  analysisResult.cvMatch.matchScore,
+                  (analysisResult.cvMatch as { routingRecommendation?: string }).routingRecommendation
+                ) && (
                   <Button
                     onClick={() => router.push('/generate')}
                     variant="outline"
                     className="w-full border-[#1E40AF] text-[#1E40AF] hover:bg-[#1E40AF] hover:text-white"
                   >
-                    Generate CV & Cover Letter Anyway 🚀
+                    Generate Optimized CV Anyway 🚀
                   </Button>
                 )}
               </div>
@@ -488,9 +466,14 @@ export default function CVInputPage() {
                 {selectedOption === 'qa' && (
                   <Button
                     onClick={handleStartQA}
+                    disabled={isNavigatingToInterview}
                     className="w-full mt-4 bg-[#1E40AF] hover:bg-[#1E3A8A]"
                   >
-                    Start Chatting! 🚀
+                    {isNavigatingToInterview ? (
+                      <LoadingSpinner size="sm" text="Starting..." />
+                    ) : (
+                      'Start Chatting! 🚀'
+                    )}
                   </Button>
                 )}
               </div>

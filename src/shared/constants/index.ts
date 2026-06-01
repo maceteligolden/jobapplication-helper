@@ -2,65 +2,47 @@
  * Application-wide constants
  */
 
-/**
- * Storage keys for local storage
- */
 export const STORAGE_KEYS = {
   CV_DATA: 'cv_optimizer_cv_data',
   JOB_DESCRIPTION: 'cv_optimizer_job_description',
   QA_SESSION: 'cv_optimizer_qa_session',
   GENERATION_RESULT: 'cv_optimizer_generation_result',
+  WORKFLOW_SESSION: 'cv_optimizer_workflow_session',
 } as const;
 
-/**
- * Hugging Face model configurations
- * Using models that work with the Inference API via @huggingface/inference library
- * Note: Some models require inference providers to be enabled in HF settings
- */
-export const HUGGINGFACE_MODELS = {
-  // Primary model - requires inference provider
-  CV_GENERATION: 'zai-org/GLM-4.7-Flash',
-  COVER_LETTER: 'zai-org/GLM-4.7-Flash',
-  // Fallback models - try these if primary fails
-  FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.2',
-  // Alternative fallback - more widely available
-  ALTERNATIVE_FALLBACK: 'mistralai/Mistral-7B-Instruct-v0.1',
-  // Modern alternative - GLM-4.7-Flash (fast and efficient)
-  GLM_FLASH: 'zai-org/GLM-4.7-Flash',
-  // Last resort - smaller, more available model
-  LAST_RESORT: 'microsoft/Phi-3-mini-4k-instruct',
+export const OPENAI_MODELS = {
+  FAST: 'gpt-4o-mini',
+  STRONG: 'gpt-4o',
+  EMBEDDING: 'text-embedding-3-small',
 } as const;
 
-/**
- * API route paths
- */
 export const API_ROUTES = {
+  SESSIONS: '/api/sessions',
   GENERATE_CV: '/api/cv/generate',
   GENERATE_COVER_LETTER: '/api/cover-letter/generate',
-  ANALYZE_JOB: '/api/job/analyze',
+  ANALYZE_CV: '/api/cv/analyze',
+  HEALTH_OPENAI: '/api/health/openai',
 } as const;
 
-/**
- * Question templates for Q&A session
- */
+/** Match routing thresholds (0-100) */
+export const MATCH_THRESHOLDS = {
+  INTERVIEW_FULL: 55,
+  INTERVIEW_TARGETED: 75,
+  GENERATE_DIRECT: 75,
+} as const;
+
 export const QUESTION_TEMPLATES: Record<string, string> = {
   personal_info: "Let's start with the basics. What's your full name?",
   experience: "Tell me about your work experience. What's your most recent position?",
   education: "What's your educational background?",
-  skills: "What are your key skills?",
-  certifications: "Do you have any professional certifications?",
-  languages: "What languages do you speak?",
-  summary: "Give me a brief professional summary about yourself.",
+  skills: 'What are your key skills?',
+  certifications: 'Do you have any professional certifications?',
+  languages: 'What languages do you speak?',
+  summary: 'Give me a brief professional summary about yourself.',
 };
 
-/**
- * Maximum file size for CV upload (5MB)
- */
 export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-/**
- * Allowed file types for CV upload
- */
 export const ALLOWED_FILE_TYPES = [
   'application/pdf',
   'application/msword',

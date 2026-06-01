@@ -1,0 +1,32 @@
+[
+  {
+    "id": "eng-senior-1",
+    "jobDescription": "Senior Backend Engineer. Node.js, PostgreSQL, REST APIs, system design. Lead features end-to-end.",
+    "cvSnippet": "5 years backend development. Built payment APIs handling 10k req/s. Led team of 4.",
+    "expectedMinScore": 60,
+    "expectedRouting": "interview_targeted",
+    "expectedJobType": "software_engineering"
+  },
+  {
+    "id": "gap-1",
+    "jobDescription": "Product Manager. Stakeholder management, roadmap, cross-functional leadership.",
+    "cvSnippet": "Software developer. Java, Spring Boot, unit tests.",
+    "expectedMaxScore": 50,
+    "expectedRouting": "interview_full",
+    "expectedJobType": "project_management"
+  },
+  {
+    "id": "warehouse-1",
+    "jobDescription": "Warehouse Operative. Forklift license required. Pick and pack, health and safety compliance. Reliable and hardworking.",
+    "cvSnippet": "2 years warehouse picker. OSHA safety training 2023.",
+    "expectedJobType": "warehouse_operations",
+    "expectTraitProbe": "hardworking"
+  },
+  {
+    "id": "swe-projects",
+    "jobDescription": "Full Stack Developer. React, Node.js. GitHub portfolio required. Selected projects section expected.",
+    "cvSnippet": "Developer with 3 years experience. Skills: JavaScript.",
+    "expectedJobType": "software_engineering",
+    "expectSection": "projects"
+  }
+]

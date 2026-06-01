@@ -1,11 +1,10 @@
 'use client';
 
 /**
- * Generation Page
- * Handles CV and cover letter generation with progress tracking
+ * Generation Page — OpenAI / LangGraph workflow
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppSelector, useAppDispatch } from '@/lib/hooks';
 import {
@@ -13,14 +12,17 @@ import {
   updateStatus,
   updateProgress,
   setGeneratedCV,
-  setGeneratedCoverLetter,
   completeGeneration,
   setError,
+  resetGeneration,
 } from '@/src/domain/slices/generationSlice';
 import { LoadingSpinner } from '@/src/presentation/components/ui/LoadingSpinner';
 import { API_ROUTES } from '@/src/shared/constants';
 import type { ApiResponse } from '@/src/shared/types';
-import type { AnalyzeResponse } from '@/app/api/cv/analyze/route';
+import {
+  getStoredSessionId,
+  runSessionGenerate,
+} from '@/src/shared/utils/sessionClient';
 
 export default function GeneratePage() {
   const router = useRouter();
@@ -29,124 +31,108 @@ export default function GeneratePage() {
   const cvData = useAppSelector((state) => state.cvData.cvData);
   const generation = useAppSelector((state) => state.generation);
   const [statusMessage, setStatusMessage] = useState('Initializing...');
+  const generationStartedRef = useRef(false);
 
-  // Start generation on mount
   useEffect(() => {
     if (!jobDescription || !cvData) {
       router.push('/cv-input');
       return;
     }
 
-    if (generation.status === 'idle') {
-      startGenerationProcess();
+    if (generationStartedRef.current) return;
+    generationStartedRef.current = true;
+
+    if (generation.status === 'completed' && generation.result?.optimizedCV) {
+      router.push('/results');
+      return;
     }
+
+    dispatch(resetGeneration());
+    startGenerationProcess();
   }, []);
 
-  /**
-   * Start the generation process
-   */
   const startGenerationProcess = async () => {
     if (!jobDescription || !cvData) return;
 
-    dispatch(startGeneration({
-      jobDescriptionId: jobDescription.id,
-      cvId: cvData.id,
-    }));
+    dispatch(
+      startGeneration({
+        jobDescriptionId: jobDescription.id,
+        cvId: cvData.id,
+      })
+    );
 
     try {
-      // Step 1: Analyze (10%) - Skip artificial delay for faster UX
       dispatch(updateStatus('analyzing'));
       dispatch(updateProgress(10));
-      setStatusMessage("Preparing your CV generation... 🤔");
+      setStatusMessage('Running AI optimization pipeline...');
 
-      // Step 2: Generate CV (30-70%)
-      dispatch(updateStatus('generating'));
-      dispatch(updateProgress(30));
-      setStatusMessage("Crafting your optimized CV... ✨");
+      const cvContent = cvData.rawContent || JSON.stringify(cvData);
+      const sessionId = getStoredSessionId();
 
-      // Skip analysis step to speed up generation - jobAnalysis is optional
-      // If analysis is needed, it should be done before reaching this page
-      const jobAnalysis = null;
+      let optimizedCV: string | undefined;
 
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 50000); // 50 second timeout
+      if (sessionId) {
+        dispatch(updateStatus('generating'));
+        dispatch(updateProgress(40));
+        setStatusMessage('Generating tailored CV via LangGraph...');
 
-      const cvResponse = await fetch(API_ROUTES.GENERATE_CV, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobDescription: jobDescription.content,
-          cvData: cvData.rawContent || JSON.stringify(cvData),
-          jobAnalysis: jobAnalysis,
-        }),
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-
-      if (!cvResponse.ok) {
-        const errorData: ApiResponse<unknown> = await cvResponse.json();
-        throw new Error(errorData.error || 'Failed to generate CV');
+        try {
+          const state = await runSessionGenerate(sessionId, cvContent);
+          optimizedCV = state?.artifacts?.atsCv ?? state?.artifacts?.humanCv;
+        } catch (workflowErr) {
+          console.warn('Session generate fallback:', workflowErr);
+        }
       }
 
-      const cvResult: ApiResponse<string> = await cvResponse.json();
-      if (!cvResult.success || !cvResult.data) {
-        throw new Error(cvResult.error || 'CV generation failed');
+      if (!optimizedCV) {
+        dispatch(updateProgress(30));
+        setStatusMessage('Crafting your optimized CV...');
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+        const cvResponse = await fetch(API_ROUTES.GENERATE_CV, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobDescription: jobDescription.content,
+            cvContent,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!cvResponse.ok) {
+          const errorData: ApiResponse<unknown> = await cvResponse.json();
+          throw new Error(errorData.error || 'Failed to generate CV');
+        }
+
+        const cvResult: ApiResponse<string> = await cvResponse.json();
+        if (!cvResult.success || !cvResult.data) {
+          throw new Error(cvResult.error || 'CV generation failed');
+        }
+        optimizedCV = typeof cvResult.data === 'string' ? cvResult.data : (cvResult.data as { optimizedCV?: string }).optimizedCV;
       }
 
-      dispatch(setGeneratedCV(cvResult.data));
-      dispatch(updateProgress(90));
-      setStatusMessage("CV generated successfully! ✨");
-
-      // Cover letter generation is temporarily disabled
-      // Step 3: Generate Cover Letter (COMMENTED OUT)
-      /*
-      dispatch(updateProgress(70));
-      setStatusMessage("CV generated! Now working on your cover letter... 📝");
-
-      const coverLetterResponse = await fetch(API_ROUTES.GENERATE_COVER_LETTER, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobDescription: jobDescription.content,
-          cvData: cvData.rawContent || JSON.stringify(cvData),
-          personalInfo: cvData.personalInfo,
-        }),
-      });
-
-      if (!coverLetterResponse.ok) {
-        const errorData: ApiResponse<unknown> = await coverLetterResponse.json();
-        throw new Error(errorData.error || 'Failed to generate cover letter');
+      if (!optimizedCV) {
+        throw new Error('No CV content generated');
       }
 
-      const coverLetterResult: ApiResponse<string> = await coverLetterResponse.json();
-      if (!coverLetterResult.success || !coverLetterResult.data) {
-        throw new Error(coverLetterResult.error || 'Cover letter generation failed');
-      }
-
-      dispatch(setGeneratedCoverLetter(coverLetterResult.data));
-      dispatch(updateProgress(90));
-      */
-
-      // Step 4: Complete (100%)
+      dispatch(setGeneratedCV(optimizedCV));
       dispatch(updateProgress(100));
       dispatch(completeGeneration());
-      setStatusMessage("All done! Your optimized CV is ready! 🎉");
-
-      // Navigate to results page immediately
+      setStatusMessage('Your optimized CV is ready!');
       router.push('/results');
     } catch (err) {
-      let errorMessage = 'Something went wrong during generation. But hey, we tried! 😅';
-      
+      let errorMessage = 'Something went wrong during generation.';
       if (err instanceof Error) {
-        if (err.name === 'AbortError' || err.message.includes('aborted')) {
-          errorMessage = 'Generation timed out. The request took too long. Please try again with a shorter job description or CV.';
+        if (err.name === 'AbortError') {
+          errorMessage = 'Generation timed out. Please try again.';
         } else {
           errorMessage = err.message;
         }
       }
-      
       dispatch(setError(errorMessage));
       setStatusMessage(`Oops! ${errorMessage}`);
     }
@@ -164,7 +150,6 @@ export default function GeneratePage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white flex items-center justify-center">
       <div className="max-w-2xl mx-auto px-4 text-center">
         <div className="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-12 border border-gray-700">
-          {/* Progress indicator */}
           <div className="mb-8">
             <div className="w-full bg-gray-700 rounded-full h-4 mb-4">
               <div
@@ -175,13 +160,11 @@ export default function GeneratePage() {
             <p className="text-2xl font-bold mb-2">{generation.progress}%</p>
           </div>
 
-          {/* Status message */}
           <div className="mb-8">
             <LoadingSpinner size="lg" className="mb-4" />
             <p className="text-xl text-gray-300">{statusMessage}</p>
           </div>
 
-          {/* Error display */}
           {generation.error && (
             <div className="bg-red-900/30 border border-red-500 rounded-lg p-4 mb-4">
               <p className="text-red-300">{generation.error}</p>
@@ -193,13 +176,6 @@ export default function GeneratePage() {
               </button>
             </div>
           )}
-
-          {/* Fun message */}
-          <p className="text-sm text-gray-500 italic">
-            {generation.status === 'analyzing' && "I'm reading through everything carefully..."}
-            {generation.status === 'generating' && "This might take a moment. Grab a coffee? ☕"}
-            {generation.status === 'completed' && "You're all set! Time to land that job! 🚀"}
-          </p>
         </div>
       </div>
     </div>

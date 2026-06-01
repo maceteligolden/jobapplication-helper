@@ -1,155 +1,86 @@
-# CV Optimizer 🚀
+# CV Optimizer (JobCV) 🚀
 
-A Next.js application that takes a job description and generates an optimized CV and cover letter using AI. Built with TypeScript, Redux Toolkit, and Hugging Face.
+AI-powered CV tailoring for job descriptions. Built with **Next.js 16**, **LangGraph**, **LangChain**, and **OpenAI**.
 
 ## Features
 
-- 📝 **Job Description Analysis** - Paste any job description and let the AI analyze it
-- 📄 **CV Upload** - Upload your existing CV or build one through a Q&A session
-- 💬 **Interactive Q&A** - Chat with the AI to build your CV from scratch
-- ✨ **AI-Powered Generation** - Uses Hugging Face models to generate optimized CVs and cover letters
-- 🎨 **Netflix-Inspired Design** - Beautiful UI with brick red, white, and blue color scheme
-- 💾 **Local Storage** - Your data is saved locally for convenience
-- 📥 **Download Results** - Download your optimized CV and cover letter
+- **Job type agent** — Classifies roles (software engineering, warehouse, business analyst, etc.) and applies standards (STAR/CAR bullets, required sections)
+- **Role intelligence** — Deep job description analysis (archetype, seniority, hidden expectations)
+- **Semantic matching** — Multi-dimensional explainable fit scoring (not keyword-only)
+- **AI interview** — Probe queue for dates (month/year), JD gaps, implicit traits (leadership, etc.), and section fill-ins (projects, certifications)
+- **CV generation** — Section-aware output (projects, certifications, portfolio when required) with measured bullets and provenance guardrails
+- **Session workflows** — Resumable LangGraph pipelines via `/api/sessions`
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **State Management**: Redux Toolkit
-- **UI Components**: Custom components with shadcn/ui
-- **AI**: Hugging Face Inference API
-- **Styling**: Tailwind CSS
+- Next.js 16 (App Router) + TypeScript
+- Redux Toolkit (client UI state)
+- **@langchain/langgraph** + **@langchain/openai**
+- OpenAI `gpt-4o` / `gpt-4o-mini` + `text-embedding-3-small`
+- Redis (optional) or in-memory session store
+- Tailwind CSS v4
 
-## Architecture
-
-The project follows clean architecture principles with clear separation of concerns:
-
-```
-src/
-├── domain/          # Business logic and Redux slices
-├── application/     # Application services
-├── infrastructure/  # External services (Hugging Face)
-├── presentation/    # UI components
-└── shared/          # Shared types, constants, utilities
-```
-
-## Setup Instructions
-
-### 1. Install Dependencies
+## Setup
 
 ```bash
 npm install
+cp .env.example .env.local
+# Set OPENAI_API_KEY in .env.local
+npm run dev
+npm test          # unit tests (job type standards, date gaps, interview planner)
 ```
 
-### 2. Configure Environment Variables
-
-Create a `.env.local` file in the root directory:
+### Required env
 
 ```env
-HUGGINGFACE_API_TOKEN=your_huggingface_token_here
+OPENAI_API_KEY=sk-...
 ```
 
-**Getting your Hugging Face token:**
-1. Go to https://huggingface.co/settings/tokens
-2. Create a new token (read access is sufficient)
-3. Copy the token to your `.env.local` file
+### Optional
 
-**Note**: If you have a token from the watchnode project, you can use that same token.
+```env
+REDIS_URL=redis://localhost:6379
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=...
+LANGCHAIN_PROJECT=jobcv-platform
+```
 
-### 3. Run Development Server
+## API Routes
+
+| Route | Purpose |
+|-------|---------|
+| `POST /api/sessions` | Create workflow session |
+| `POST /api/sessions/:id/run` | Run analyze or generate pipeline |
+| `POST /api/sessions/:id/message` | Interview turn (or `init: true`) |
+| `GET /api/sessions/:id/state` | Poll workflow state |
+| `GET /api/sessions/:id/stream` | SSE token stream |
+| `POST /api/cv/analyze` | Legacy analyze endpoint |
+| `POST /api/cv/generate` | Legacy CV generation |
+| `GET /api/health/openai` | OpenAI connectivity check |
+
+## Architecture
+
+```
+src/ai/
+  agents/       # Job analyzer, scorer, interview, generator, validators
+  graphs/       # cvWorkflow.graph, interview.graph
+  schemas/      # Zod types (RoleProfile, MatchReport, etc.)
+  tools/        # Embeddings, resume parsing
+  evals/        # Golden-pair regression harness
+src/infrastructure/
+  llm/          # OpenAI client (lazy init)
+  storage/      # Session store (Redis or memory)
+```
+
+## Scripts
 
 ```bash
 npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## Usage Flow
-
-1. **Landing Page** - Enter the job description
-2. **CV Input** - Choose to upload a CV or start a Q&A session
-3. **Q&A Session** (if chosen) - Answer questions to build your CV
-4. **Generation** - Watch as the AI generates your optimized CV and cover letter
-5. **Results** - Review and download your documents
-
-## Project Structure
-
-```
-app/
-├── page.tsx              # Landing page (job description input)
-├── cv-input/             # CV upload/Q&A selection page
-├── qa/                   # Q&A chat interface
-├── generate/             # Generation progress page
-├── results/              # Results display page
-└── api/
-    ├── cv/generate/      # CV generation API
-    └── cover-letter/     # Cover letter generation API
-
-src/
-├── domain/slices/        # Redux slices
-├── infrastructure/       # External service integrations
-├── presentation/         # UI components
-└── shared/               # Shared utilities and types
-```
-
-## Design System
-
-The application uses a Netflix-inspired design with:
-- **Primary Color**: Brick Red (#B91C1C)
-- **Accent Color**: Blue (#1E40AF)
-- **Background**: Dark gradient (gray-900 to black)
-- **Typography**: Clean, modern sans-serif fonts
-
-## Key Features Implementation
-
-### State Management
-- Redux Toolkit for centralized state
-- Separate slices for job description, CV data, Q&A session, and generation status
-- Local storage persistence for user data
-
-### Error Handling
-- Comprehensive error handling throughout
-- User-friendly error messages
-- Fallback mechanisms for API failures
-
-### Loading States
-- Interactive loading indicators
-- Progress tracking during generation
-- Clear status messages
-
-## Development
-
-### Build for Production
-
-```bash
 npm run build
-npm start
-```
-
-### Type Checking
-
-```bash
-npx tsc --noEmit
-```
-
-### Linting
-
-```bash
 npm run lint
+npm run eval   # Golden-pair evals (requires OPENAI_API_KEY)
 ```
 
-## Notes
+## Phase 2
 
-- The application uses Hugging Face's Meta Llama 3.1 8B Instruct model by default
-- PDF and Word document parsing is planned for future updates (currently supports .txt files)
-- All user data is stored locally in the browser
-- The AI generation process may take 30-60 seconds depending on the model
-
-## License
-
-MIT
-
----
-
-**Built with ❤️ and a touch of humor** 😎
+See [src/ai/phase2/README.md](src/ai/phase2/README.md) for Postgres, pgvector, OCR, and auth plans.

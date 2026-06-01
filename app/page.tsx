@@ -14,6 +14,7 @@ import { TextArea } from '@/src/presentation/components/ui/TextArea';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/src/presentation/components/ui/LoadingSpinner';
 import type { JobDescription } from '@/src/shared/types';
+import { ensureServerSession } from '@/src/shared/utils/sessionClient';
 
 export default function Home() {
   const router = useRouter();
@@ -55,8 +56,11 @@ export default function Home() {
       // Save to Redux store
       dispatch(setJobDescription(jobDesc));
 
+      // Create server workflow session
+      await ensureServerSession(jobDesc.content);
+
       // Small delay for UX (makes it feel more polished)
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       // Navigate to CV input page
       router.push('/cv-input');

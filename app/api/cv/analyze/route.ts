@@ -39,21 +39,13 @@ export async function POST(
       );
     }
 
-    if (!cvContent || typeof cvContent !== 'string') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'CV content is required',
-        },
-        { status: 400 }
-      );
-    }
+    const cvText = typeof cvContent === 'string' ? cvContent : '';
 
     // Analyze job description first
     const jobAnalysis = await analyzeJobDescription(jobDescription);
 
-    // Analyze CV match
-    const cvMatch = await analyzeCVMatch(cvContent, jobDescription, jobAnalysis);
+    // Analyze CV match (empty CV allowed for Q&A-only flow)
+    const cvMatch = await analyzeCVMatch(cvText, jobDescription, jobAnalysis);
 
     return NextResponse.json({
       success: true,
